@@ -301,6 +301,9 @@ class MACECalculator(Calculator):
                 ret_tensors["dipole"][i] = out["dipole"].detach()
 
         self.results = {}
+
+        self.results["node_feats"] = (out["node_feats"])
+        
         if self.model_type in ["MACE", "EnergyDipoleMACE"]:
             self.results["energy"] = (
                 torch.mean(ret_tensors["energies"], dim=0).cpu().item()
