@@ -188,9 +188,6 @@ class MACECalculator(Calculator):
             self.heads = ["Default"]
         model_dtype = get_model_dtype(self.models[0])
         if default_dtype == "":
-            print(
-                f"No dtype selected, switching to {model_dtype} to match model dtype."
-            )
             default_dtype = model_dtype
         if model_dtype != default_dtype:
             print(
