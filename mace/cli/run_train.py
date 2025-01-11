@@ -20,6 +20,8 @@ from e3nn.util import jit
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import ConcatDataset
 from torch_ema import ExponentialMovingAverage
+import time
+import psutil
 
 import mace
 from mace import data, tools
@@ -54,6 +56,8 @@ from mace.tools.scripts_utils import (
 from mace.tools.slurm_distributed import DistributedEnvironment
 from mace.tools.tables_utils import create_error_table
 from mace.tools.utils import AtomicNumberTable
+
+start_time = time.time()
 
 
 def main() -> None:
@@ -805,6 +809,19 @@ def run(args: argparse.Namespace) -> None:
     logging.info("Done")
     if args.distributed:
         torch.distributed.destroy_process_group()
+        
+
+    end_time = time.time()
+    total_time = end_time - start_time
+    ram_mem = psutil.Process().memory_info().rss * 1e-9
+    with open("log_stats.log", "w") as log_file:
+        log_file.write(f"Total Time: {total_time/3600:.2f} hours\n")
+        log_file.write(f"RAM memory: {ram_mem:.2f} GB\n")
+        
+        for i in range(torch.cuda.device_count()):
+            max_memory_gb = torch.cuda.max_memory_allocated(device=f'cuda:{i}') * 1e-9
+            log_file.write(f"GPU {i} memory: {max_memory_gb:.2f} GB\n")
+                
 
 
 if __name__ == "__main__":
