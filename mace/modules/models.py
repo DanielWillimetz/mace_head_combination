@@ -268,9 +268,18 @@ class MACE(torch.nn.Module):
                 node_attrs=data["node_attrs"],
             )
             node_feats_list.append(node_feats)
-            node_energies = readout(node_feats, node_heads)[
-                num_atoms_arange, node_heads
-            ]  # [n_nodes, len(heads)]
+            
+            if hasattr(self, "similarity_fn") and callable(self.similarity_fn):
+                if isinstance(readout, LinearReadoutBlock):
+                    block_type = "LinearReadoutBlock"
+                elif isinstance(readout, NonLinearReadoutBlock):
+                    block_type = "NonLinearReadoutBlock"
+                delta = self.similarity_fn(node_feats,block=block_type)
+                node_energies = readout(node_feats, node_heads, delta=delta)[num_atoms_arange, node_heads]
+                
+            else:
+                node_energies = readout(node_feats, node_heads)[num_atoms_arange, node_heads]
+                
             energy = scatter_sum(
                 src=node_energies,
                 index=data["batch"],
@@ -408,9 +417,16 @@ class ScaleShiftMACE(MACE):
                 node_feats=node_feats, sc=sc, node_attrs=data["node_attrs"]
             )
             node_feats_list.append(node_feats)
-            node_es_list.append(
-                readout(node_feats, node_heads)[num_atoms_arange, node_heads]
-            )  # {[n_nodes, ], }
+            
+            if hasattr(self, "similarity_fn") and callable(self.similarity_fn):
+                if isinstance(readout, LinearReadoutBlock):
+                    block_type = "LinearReadoutBlock"
+                elif isinstance(readout, NonLinearReadoutBlock):
+                    block_type = "NonLinearReadoutBlock"
+                delta = self.similarity_fn(node_feats,block=block_type)
+                node_es_list.append(readout(node_feats, node_heads, delta=delta)[num_atoms_arange, node_heads])   
+            else:
+                node_es_list.append(readout(node_feats, node_heads)[num_atoms_arange, node_heads])
 
         # Concatenate node features
         node_feats_out = torch.cat(node_feats_list, dim=-1)

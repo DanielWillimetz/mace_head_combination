@@ -55,8 +55,15 @@ class LinearReadoutBlock(torch.nn.Module):
         self,
         x: torch.Tensor,
         heads: Optional[torch.Tensor] = None,  # pylint: disable=unused-argument
+        delta: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
-        return self.linear(x)  # [n_nodes, 1]
+
+        node_energies = self.linear(x)
+        if delta is not None and node_energies.shape[1] > 1:
+            node_energies = torch.mm(node_energies, delta).diagonal().unsqueeze(1)
+            node_energies = torch.cat((torch.zeros(node_energies.size(0), 1, device=node_energies.device), node_energies), dim=1)
+
+        return node_energies  # [n_nodes, 1]
 
 
 @simplify_if_compile
@@ -78,13 +85,28 @@ class NonLinearReadoutBlock(torch.nn.Module):
         self.linear_2 = o3.Linear(irreps_in=self.hidden_irreps, irreps_out=irrep_out)
 
     def forward(
-        self, x: torch.Tensor, heads: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, heads: Optional[torch.Tensor] = None, delta: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
         x = self.non_linearity(self.linear_1(x))
         if hasattr(self, "num_heads"):
             if self.num_heads > 1 and heads is not None:
-                x = mask_head(x, heads, self.num_heads)
-        return self.linear_2(x)  # [n_nodes, len(heads)]
+                x_last_head = mask_head(x, heads, self.num_heads)
+                node_energies = self.linear_2(x_last_head)
+
+                if delta is not None:
+                    for head in range(self.num_heads-1, 0, -1):
+                        heads_i = heads - head
+                        x_i = mask_head(x, heads_i, self.num_heads)
+                        node_energies_i = self.linear_2(x_i)[:, heads_i[0]]
+                        node_energies = node_energies.clone()
+                        node_energies[:, heads_i[0]] = node_energies_i
+                        node_energies = torch.mm(node_energies, delta).diagonal().unsqueeze(1)
+                        node_energies = torch.cat((torch.zeros(node_energies.size(0), 1, device=node_energies.device), node_energies), dim=1)
+            else:
+                node_energies = self.linear_2(x)
+            
+        return node_energies  # [n_nodes, len(heads)]
+
 
 
 @compile_mode("script")
